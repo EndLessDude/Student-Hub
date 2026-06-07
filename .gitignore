@@ -1,3 +1,17 @@
-node_modules
-.env.local
+node_modules/
+dist/
+dist-ssr/
 
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+*.log
+
+.vscode/
+.idea/
+.cache/
+.firebase/
+firebase-debug.log
+firestore-debug.log
