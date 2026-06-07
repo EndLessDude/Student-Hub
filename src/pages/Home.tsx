@@ -1,22 +1,29 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Calendar, Clock, AlertCircle } from 'lucide-react'
+import { BookOpen, Calendar, Clock, AlertCircle, Plus, Pencil } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
-import { Assignment, Exam, Reminder } from '../types'
+import { Assignment, Exam, Reminder, GlobalLink } from '../types'
 import { formatDate, calculateExamProgress, isOverdue } from '../utils'
-import { Checkbox } from '../components/Shared'
+import { Checkbox, ConfirmDialog } from '../components/Shared'
+import { LinkIconButton } from '../components/LinkIconButton'
+import GlobalLinkModal from '../components/modals/GlobalLinkModal'
 
 const Home: React.FC = () => {
   const { items: assignments, updateItem: updateAssignment, loading: loadA } = useCollection<Assignment>('assignments')
   const { items: exams, updateItem: updateExam, loading: loadE } = useCollection<Exam>('exams')
   const { items: reminders, updateItem: updateReminder, loading: loadR } = useCollection<Reminder>('reminders')
+  const { items: globalLinks, addItem: addLink, updateItem: updateLink, deleteItem: deleteLink } = useCollection<GlobalLink>('globalLinks')
+
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [editingLink, setEditingLink] = useState<GlobalLink | null>(null)
+  const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null)
+  const [editingLinks, setEditingLinks] = useState(false)
 
   const loading = loadA || loadE || loadR
 
   const pendingAssignments = assignments.filter((a) => !a.completed)
   const pendingExams = exams.filter((e) => !e.completed)
   const pendingReminders = reminders.filter((r) => !r.completed)
-
   const overdueAssignments = pendingAssignments.filter((a) => isOverdue(a.dueDate))
   const overdueReminders = pendingReminders.filter((r) => isOverdue(r.dateTime.split('T')[0]))
 
@@ -31,14 +38,16 @@ const Home: React.FC = () => {
     .slice(0, 3)
 
   const todayStr = new Date().toISOString().split('T')[0]
-  const todayReminders = pendingReminders.filter((r) =>
-    r.dateTime.startsWith(todayStr)
-  )
-
+  const todayReminders = pendingReminders.filter((r) => r.dateTime.startsWith(todayStr))
   const totalOverdue = overdueAssignments.length + overdueReminders.length
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Morning' : hour < 18 ? 'Afternoon' : 'Evening'
+
+  const handleSaveLink = async (data: Omit<GlobalLink, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (editingLink) { await updateLink(editingLink.id, data) }
+    else { await addLink(data) }
+  }
 
   if (loading) {
     return (
@@ -49,13 +58,66 @@ const Home: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Good {greeting}</h1>
         <p className="text-gray-500 text-sm mt-1">
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
+      </div>
+
+      {/* Quick Links */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">Quick Links</h2>
+          <button
+            onClick={() => setEditingLinks(!editingLinks)}
+            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+          >
+            <Pencil className="w-3 h-3" />
+            {editingLinks ? 'Done' : 'Edit'}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {globalLinks.length === 0 && !editingLinks && (
+            <p className="text-sm text-gray-400">Add quick links to your school tools.</p>
+          )}
+          {globalLinks.map((link) => (
+            <div key={link.id} className="relative group">
+              <div className="flex flex-col items-center gap-1">
+                <LinkIconButton link={link} size="md" />
+                <span className="text-xs text-gray-500">{link.title}</span>
+              </div>
+              {editingLinks && (
+                <div className="absolute -top-1 -right-1 flex gap-0.5">
+                  <button
+                    onClick={() => { setEditingLink(link); setLinkModalOpen(true) }}
+                    className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center hover:bg-blue-600"
+                  >
+                    <Pencil className="w-2 h-2 text-white" />
+                  </button>
+                  <button
+                    onClick={() => setDeletingLinkId(link.id)}
+                    className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600"
+                  >
+                    <span className="text-white text-xs font-bold leading-none">×</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={() => { setEditingLink(null); setLinkModalOpen(true) }}
+            className="flex flex-col items-center gap-1 group"
+          >
+            <div className="w-9 h-9 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center group-hover:border-blue-400 transition-colors">
+              <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-500" />
+            </div>
+            <span className="text-xs text-gray-400">Add</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -83,26 +145,18 @@ const Home: React.FC = () => {
 
       {/* Two column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Upcoming Assignments */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">Upcoming Assignments</h2>
-            <Link to="/assignments" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-              View all →
-            </Link>
+            <Link to="/assignments" className="text-xs text-blue-600 hover:text-blue-700 font-medium">View all →</Link>
           </div>
           {upcomingAssignments.length > 0 ? (
             <div className="space-y-1">
               {upcomingAssignments.map((a) => (
                 <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 group">
-                  <Checkbox
-                    checked={a.completed}
-                    onChange={() => updateAssignment(a.id, { completed: !a.completed })}
-                  />
+                  <Checkbox checked={a.completed} onChange={() => updateAssignment(a.id, { completed: !a.completed })} />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${a.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                      {a.title}
-                    </p>
+                    <p className={`text-sm font-medium truncate ${a.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>{a.title}</p>
                     <p className="text-xs text-gray-500">{a.className}</p>
                   </div>
                   <span className={`text-xs font-medium flex-shrink-0 ${isOverdue(a.dueDate) ? 'text-red-500' : 'text-gray-400'}`}>
@@ -116,13 +170,10 @@ const Home: React.FC = () => {
           )}
         </div>
 
-        {/* Upcoming Exams */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">Upcoming Exams</h2>
-            <Link to="/exams" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-              View all →
-            </Link>
+            <Link to="/exams" className="text-xs text-blue-600 hover:text-blue-700 font-medium">View all →</Link>
           </div>
           {upcomingExams.length > 0 ? (
             <div className="space-y-1">
@@ -130,10 +181,7 @@ const Home: React.FC = () => {
                 const progress = calculateExamProgress(exam)
                 return (
                   <div key={exam.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                    <Checkbox
-                      checked={exam.completed}
-                      onChange={() => updateExam(exam.id, { completed: !exam.completed })}
-                    />
+                    <Checkbox checked={exam.completed} onChange={() => updateExam(exam.id, { completed: !exam.completed })} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{exam.title}</p>
                       <div className="flex items-center gap-2 mt-1">
@@ -143,9 +191,7 @@ const Home: React.FC = () => {
                         <span className="text-xs text-gray-400">{progress}%</span>
                       </div>
                     </div>
-                    <span className="text-xs font-medium text-gray-400 flex-shrink-0">
-                      {formatDate(exam.examDate)}
-                    </span>
+                    <span className="text-xs font-medium text-gray-400 flex-shrink-0">{formatDate(exam.examDate)}</span>
                   </div>
                 )
               })}
@@ -163,10 +209,7 @@ const Home: React.FC = () => {
           <div className="space-y-1">
             {todayReminders.map((r) => (
               <div key={r.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                <Checkbox
-                  checked={r.completed}
-                  onChange={() => updateReminder(r.id, { completed: !r.completed })}
-                />
+                <Checkbox checked={r.completed} onChange={() => updateReminder(r.id, { completed: !r.completed })} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{r.title}</p>
                   {r.notes && <p className="text-xs text-gray-500 truncate">{r.notes}</p>}
@@ -179,6 +222,23 @@ const Home: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <GlobalLinkModal
+        isOpen={linkModalOpen}
+        onClose={() => { setLinkModalOpen(false); setEditingLink(null) }}
+        onSave={handleSaveLink}
+        initial={editingLink}
+      />
+      <ConfirmDialog
+        isOpen={!!deletingLinkId}
+        title="Remove Link"
+        message="Remove this quick link from your dashboard?"
+        confirmLabel="Remove"
+        danger
+        onConfirm={async () => { if (deletingLinkId) { await deleteLink(deletingLinkId); setDeletingLinkId(null) } }}
+        onCancel={() => setDeletingLinkId(null)}
+      />
     </div>
   )
 }

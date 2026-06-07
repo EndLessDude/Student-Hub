@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { X, Plus, Trash2 } from 'lucide-react'
 import { Assignment } from '../../types'
+import { useCollection } from '../../hooks/useCollection'
+import { ClassItem } from '../../types'
 
 type FormData = Omit<Assignment, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -9,9 +11,14 @@ interface AssignmentModalProps {
   onClose: () => void
   onSave: (data: FormData) => Promise<void>
   initial?: Assignment | null
+  prefillDate?: string
 }
 
-const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSave, initial }) => {
+const AssignmentModal: React.FC<AssignmentModalProps> = ({
+  isOpen, onClose, onSave, initial, prefillDate,
+}) => {
+  const { items: classes } = useCollection<ClassItem>('classes')
+
   const [title, setTitle] = useState('')
   const [className, setClassName] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -19,6 +26,7 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSa
   const [links, setLinks] = useState<string[]>([''])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showClassSuggestions, setShowClassSuggestions] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -31,19 +39,22 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSa
       } else {
         setTitle('')
         setClassName('')
-        setDueDate('')
+        setDueDate(prefillDate ?? '')
         setNotes('')
         setLinks([''])
       }
       setError('')
     }
-  }, [isOpen, initial])
+  }, [isOpen, initial, prefillDate])
+
+  const classNameSuggestions = classes.filter((c) =>
+    c.name.toLowerCase().includes(className.toLowerCase()) && className.length > 0
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) { setError('Title is required'); return }
     if (!dueDate) { setError('Due date is required'); return }
-
     try {
       setLoading(true)
       setError('')
@@ -96,15 +107,31 @@ const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSa
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Class</label>
                 <input
                   type="text"
                   value={className}
-                  onChange={(e) => setClassName(e.target.value)}
+                  onChange={(e) => { setClassName(e.target.value); setShowClassSuggestions(true) }}
+                  onBlur={() => setTimeout(() => setShowClassSuggestions(false), 150)}
                   placeholder="e.g. Math 201"
                   className="input-field"
                 />
+                {showClassSuggestions && classNameSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1">
+                    {classNameSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={() => { setClassName(c.name); setShowClassSuggestions(false) }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Due Date *</label>

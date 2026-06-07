@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { X, Plus, Trash2 } from 'lucide-react'
-import { Exam, ExamObjective, StudyResource } from '../../types'
+import { Exam, ExamObjective, StudyResource, ClassItem } from '../../types'
+import { useCollection } from '../../hooks/useCollection'
 
 type FormData = Omit<Exam, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -9,11 +10,14 @@ interface ExamModalProps {
   onClose: () => void
   onSave: (data: FormData) => Promise<void>
   initial?: Exam | null
+  prefillDate?: string
 }
 
 const genId = () => Math.random().toString(36).slice(2, 9)
 
-const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial }) => {
+const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial, prefillDate }) => {
+  const { items: classes } = useCollection<ClassItem>('classes')
+
   const [title, setTitle] = useState('')
   const [className, setClassName] = useState('')
   const [examDate, setExamDate] = useState('')
@@ -21,6 +25,7 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
   const [resources, setResources] = useState<StudyResource[]>([{ id: genId(), title: '', url: '' }])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showClassSuggestions, setShowClassSuggestions] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -33,19 +38,22 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
       } else {
         setTitle('')
         setClassName('')
-        setExamDate('')
+        setExamDate(prefillDate ?? '')
         setObjectives([{ id: genId(), text: '', completed: false }])
         setResources([{ id: genId(), title: '', url: '' }])
       }
       setError('')
     }
-  }, [isOpen, initial])
+  }, [isOpen, initial, prefillDate])
+
+  const classNameSuggestions = classes.filter((c) =>
+    c.name.toLowerCase().includes(className.toLowerCase()) && className.length > 0
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) { setError('Title is required'); return }
     if (!examDate) { setError('Exam date is required'); return }
-
     try {
       setLoading(true)
       setError('')
@@ -98,15 +106,31 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Class</label>
                 <input
                   type="text"
                   value={className}
-                  onChange={(e) => setClassName(e.target.value)}
+                  onChange={(e) => { setClassName(e.target.value); setShowClassSuggestions(true) }}
+                  onBlur={() => setTimeout(() => setShowClassSuggestions(false), 150)}
                   placeholder="e.g. Math 102"
                   className="input-field"
                 />
+                {showClassSuggestions && classNameSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1">
+                    {classNameSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={() => { setClassName(c.name); setShowClassSuggestions(false) }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Exam Date *</label>
@@ -122,12 +146,8 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-gray-700">Study Objectives</label>
-                <button
-                  type="button"
-                  onClick={() => setObjectives([...objectives, { id: genId(), text: '', completed: false }])}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium"
-                >
-                  <Plus className="w-3 h-3" /> Add objective
+                <button type="button" onClick={() => setObjectives([...objectives, { id: genId(), text: '', completed: false }])} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
+                  <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
               <div className="space-y-2">
@@ -136,18 +156,12 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
                     <input
                       type="text"
                       value={obj.text}
-                      onChange={(e) =>
-                        setObjectives(objectives.map((o) => o.id === obj.id ? { ...o, text: e.target.value } : o))
-                      }
+                      onChange={(e) => setObjectives(objectives.map((o) => o.id === obj.id ? { ...o, text: e.target.value } : o))}
                       placeholder="e.g. Integration by parts"
                       className="input-field"
                     />
                     {objectives.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setObjectives(objectives.filter((o) => o.id !== obj.id))}
-                        className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                      >
+                      <button type="button" onClick={() => setObjectives(objectives.filter((o) => o.id !== obj.id))} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
@@ -159,12 +173,8 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-gray-700">Study Resources</label>
-                <button
-                  type="button"
-                  onClick={() => setResources([...resources, { id: genId(), title: '', url: '' }])}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium"
-                >
-                  <Plus className="w-3 h-3" /> Add resource
+                <button type="button" onClick={() => setResources([...resources, { id: genId(), title: '', url: '' }])} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
+                  <Plus className="w-3 h-3" /> Add
                 </button>
               </div>
               <div className="space-y-2">
@@ -173,27 +183,19 @@ const ExamModal: React.FC<ExamModalProps> = ({ isOpen, onClose, onSave, initial 
                     <input
                       type="text"
                       value={res.title}
-                      onChange={(e) =>
-                        setResources(resources.map((r) => r.id === res.id ? { ...r, title: e.target.value } : r))
-                      }
+                      onChange={(e) => setResources(resources.map((r) => r.id === res.id ? { ...r, title: e.target.value } : r))}
                       placeholder="Title"
                       className="input-field"
                     />
                     <input
                       type="url"
                       value={res.url}
-                      onChange={(e) =>
-                        setResources(resources.map((r) => r.id === res.id ? { ...r, url: e.target.value } : r))
-                      }
+                      onChange={(e) => setResources(resources.map((r) => r.id === res.id ? { ...r, url: e.target.value } : r))}
                       placeholder="https://..."
                       className="input-field"
                     />
                     {resources.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setResources(resources.filter((r) => r.id !== res.id))}
-                        className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                      >
+                      <button type="button" onClick={() => setResources(resources.filter((r) => r.id !== res.id))} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
